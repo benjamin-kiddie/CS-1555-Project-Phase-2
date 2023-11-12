@@ -56,11 +56,13 @@ CREATE OR REPLACE FUNCTION addForestCoverage() RETURNS TRIGGER AS
             x_dist = min(NEW.mbr_xmax, rec_state.mbr_xmax) - max(NEW.mbr_xmin, rec_state.mbr_xmin);
             y_dist = min(NEW.mbr_ymax, rec_state.mbr_ymax) - max(NEW.mbr_ymin, rec_state.mbr_ymin);
             area = x_dist * y_dist;
-            percentage = area / ((NEW.mbr_xmax - NEW.mbr_xmin) * (NEW.mbr_ymax - NEW.mbr_ymin));
+            percentage = area / NEW.area;
             -- Insert into COVERAGE table.
             INSERT INTO COVERAGE
             VALUES (NEW.forest_no, rec_state.abbreviation, percentage, area);
         END LOOP;
+        -- Return.
+        RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
@@ -90,6 +92,9 @@ CREATE OR REPLACE FUNCTION calculateForestArea() RETURNS TRIGGER AS
         END IF;
         area = x_dist * y_dist;
         NEW.area = area;
+        RAISE NOTICE 'changed forest area';
+         -- Return.
+        RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
@@ -119,6 +124,8 @@ CREATE OR REPLACE FUNCTION calculateStateArea() RETURNS TRIGGER AS
         END IF;
         area = x_dist * y_dist;
         NEW.area = area;
+         -- Return.
+        RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
@@ -149,6 +156,8 @@ CREATE OR REPLACE FUNCTION checkStateOverlap() RETURNS TRIGGER AS
                 RAISE EXCEPTION 'Newly inserted/updated state will overlap with existing state.';
             END IF;
         END LOOP;
+         -- Return.
+        RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
@@ -179,6 +188,8 @@ CREATE OR REPLACE FUNCTION checkForestOverlap() RETURNS TRIGGER AS
                 RAISE EXCEPTION 'Newly inserted/updated forest will overlap with existing forest.';
             END IF;
         END LOOP;
+         -- Return.
+        RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
 
