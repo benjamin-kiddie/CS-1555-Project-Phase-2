@@ -6,6 +6,8 @@
 -- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
 ------------------------------------------------
 
+SET SCHEMA 'arbor_db';
+
 -- Reusable function. Checks if two MBRs overlap.
 CREATE OR REPLACE FUNCTION checkMBROverlap(xmin1 real, xmin2 real, ymin1 real,
     ymin2 real, xmax1 real, xmax2 real, ymax1 real, ymax2 real) RETURNS boolean AS
@@ -159,8 +161,8 @@ CREATE TRIGGER checkStateOverlap
 
 -----------------------------------------------------------------
 
--- Check if an inserted or modified state will overlap
--- with any other states. If so, abort the insert/update.
+-- Check if an inserted or modified forest will overlap
+-- with any other forests. If so, abort the insert/update.
 CREATE OR REPLACE FUNCTION checkForestOverlap() RETURNS TRIGGER AS
     $$
     DECLARE
@@ -180,9 +182,46 @@ CREATE OR REPLACE FUNCTION checkForestOverlap() RETURNS TRIGGER AS
     END;
     $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS checkStateOverlap ON STATE;
-CREATE TRIGGER checkStateOverlap
+DROP TRIGGER IF EXISTS checkForestOverlap ON FOREST;
+CREATE TRIGGER checkForestOverlap
     BEFORE INSERT OR UPDATE
-    ON STATE
+    ON FOREST
     FOR EACH ROW
-    EXECUTE PROCEDURE checkStateOverlap();
+    EXECUTE PROCEDURE checkForestOverlap();
+
+-----------------------------------------------------------------
+
+-- Checks if the maintainer of a sensor is employed within one
+-- of the states that covers the sensor's position. Operation is
+-- prevented if the case is not as such.
+CREATE OR REPLACE FUNCTION checkMaintainerEmployment() RETURNS TRIGGER AS
+    $$
+    DECLARE
+        rec_state_abb record;
+        rec_state record;
+    BEGIN
+        -- For each state (abbreviation) that the worker is employed in...
+        FOR rec_state_abb IN SELECT state FROM EMPLOYED WHERE worker = NEW.maintainer_id
+        LOOP
+            -- First, obtain the full state tuple.
+            SELECT * INTO rec_state FROM STATE WHERE abbreviation = rec_state_abb.state;
+            -- If the X and Y position of the sensor lies within state, proceed with insert/update.
+            IF NEW.X <= rec_state.MBR_XMax AND NEW.X >= rec_state.MBR_XMin
+                AND NEW.Y <= rec_state.MBR_YMax AND NEW.Y >= rec_state.MBR_YMin THEN
+                RETURN NEW;
+            END IF;
+        END LOOP;
+        -- If X any Y position of sensor is not contained within any state, throw an exception.
+        RAISE 'maintainer_not_employed_in_state' USING errcode = 'NOEMP';
+    EXCEPTION
+        WHEN sqlstate 'NOEMP' THEN
+            RAISE NOTICE 'The new maintainer of this sensor is not employed by a state which covers the sensor. This operation has been reverted.';
+    END;
+    $$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS checkMaintainerEmployment ON SENSOR;
+CREATE TRIGGER checkMaintainerEmployment
+    BEFORE INSERT OR UPDATE
+    ON SENSOR
+    FOR EACH ROW
+    EXECUTE FUNCTION checkMaintainerEmployment();

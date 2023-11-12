@@ -6,3 +6,4 @@
 -- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
 ------------------------------------------------
 
+SET SCHEMA 'arbor_db';
