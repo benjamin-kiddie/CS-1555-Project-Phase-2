@@ -227,3 +227,24 @@ CREATE TRIGGER checkMaintainerEmployment
     ON SENSOR
     FOR EACH ROW
     EXECUTE FUNCTION checkMaintainerEmployment();
+
+-------------------------------------------------------------------
+-- Trigger for reassigning sensors after worker's employment deletion
+CREATE OR REPLACE FUNCTION reassignSensors() RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE SENSOR
+    SET maintainer_id = (
+        SELECT MIN(worker)
+        FROM EMPLOYED e
+        WHERE e.state = OLD.state AND e.worker != OLD.worker
+    )
+    WHERE maintainer_id = OLD.worker;
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER reassign_sensors_trigger
+AFTER DELETE ON EMPLOYED
+FOR EACH ROW
+EXECUTE FUNCTION reassignSensors();
