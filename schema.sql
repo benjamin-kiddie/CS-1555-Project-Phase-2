@@ -142,7 +142,7 @@ CREATE TABLE SENSOR (
 
     CONSTRAINT sensor_pk PRIMARY KEY (sensor_id),
     CONSTRAINT sensor_fk_worker FOREIGN KEY (maintainer_id) REFERENCES WORKER(SSN)
-        ON UPDATE CASCADE ON DELETE NO ACTION,
+        ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINt sensor_bounded_energy CHECK (energy >= 0 AND energy <= 100)
 );
 
@@ -154,7 +154,7 @@ CREATE TABLE REPORT (
 
     CONSTRAINT report_pk PRIMARY KEY (sensor_id, report_time),
     CONSTRAINT report_fk_sensor FOREIGN KEY (sensor_id) REFERENCES SENSOR(sensor_id)
-        ON UPDATE CASCADE ON DELETE NO ACTION
+        ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 DROP TABLE IF EXISTS COVERAGE CASCADE;

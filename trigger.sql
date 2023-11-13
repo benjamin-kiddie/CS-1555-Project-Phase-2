@@ -194,7 +194,7 @@ CREATE TRIGGER checkForestOverlap
 
 -- Checks if the maintainer of a sensor is employed within one
 -- of the states that covers the sensor's position. Operation is
--- prevented if the case is not as such.
+-- prevented if this is not the case.
 CREATE OR REPLACE FUNCTION checkMaintainerEmployment() RETURNS TRIGGER AS
     $$
     DECLARE

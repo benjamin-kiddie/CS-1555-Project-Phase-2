@@ -45,23 +45,51 @@ CREATE OR REPLACE PROCEDURE addSpeciesToForest(no integer, gen varchar(30), epi 
 
 -- Given an ssn, first name, last name, middle initial,
 -- rank, and abbreviation, add an entry to the worker table.
-CREATE OR REPLACE PROCEDURE newWorker(ssn char(9), f varchar(30), l varchar(30), mi char(1), r rank, abb char(2)) AS
+CREATE OR REPLACE PROCEDURE newWorker(n char(9), f varchar(30), l varchar(30), mi char(1), r rank, abb char(2)) AS
     $$
     BEGIN
         INSERT INTO WORKER
-        VALUES (ssn, f, l, mi, r);
+        VALUES (n, f, l, mi, r);
         INSERT INTO EMPLOYED
-        VALUES (abb, ssn);
+        VALUES (abb, n);
     END;
     $$ LANGUAGE plpgsql;
 
 
--- Given an ssn and abbreviation, add an entry to 
+-- Given an ssn and abbreviation, add an entry to
 -- the employed table.
 CREATE OR REPLACE PROCEDURE employWorkerToState(ssn char(9), abb char(2)) AS
     $$
     BEGIN
         INSERT INTO EMPLOYED
         VALUES (abb, ssn);
+    END;
+    $$ LANGUAGE plpgsql;
+
+-- Given an sensor_id, report time, and temperature,
+-- add an entry to report table.
+CREATE OR REPLACE PROCEDURE generateReport(sid integer, rt timestamp, temp real) AS
+    $$
+    BEGIN
+        INSERT INTO REPORT
+        VALUES (sid, rt, temp);
+    END;
+    $$ LANGUAGE plpgsql;
+
+-- Given an genus, epithet, and forest_no, remove
+-- an entry from the found in table.
+CREATE OR REPLACE PROCEDURE removeSpeciesFromForest(gen varchar(30), epi varchar(30), no integer) AS
+    $$
+    BEGIN
+        DELETE FROM FOUND_IN
+        WHERE forest_no = no AND genus = gen AND epithet = epi;
+    END;
+    $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE PROCEDURE deleteWorker(n varchar(9)) AS
+    $$
+    BEGIN
+        DELETE FROM WORKER
+        WHERE ssn = n;
     END;
     $$ LANGUAGE plpgsql;
