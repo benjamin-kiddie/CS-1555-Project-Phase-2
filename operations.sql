@@ -16,8 +16,9 @@ CREATE OR REPLACE PROCEDURE addForest(n varchar(30), a integer, al real, xmin re
     DECLARE
         no integer;
     BEGIN
-        -- Determine current max forest number
-        no := (SELECT COALESCE(MAX(forest_no), 0) FROM FOREST) + 1;
+        -- Create new forest_no.
+        SELECT COALESCE(MAX(forest_no), 0) + 1 INTO no FROM FOREST;
+        -- Insert new tuple.
         INSERT INTO FOREST
         VALUES (no, n, a, al, xmin, xmax, ymin, ymax);
     END;
@@ -66,7 +67,7 @@ CREATE OR REPLACE PROCEDURE employWorkerToState(ssn char(9), abb char(2)) AS
     END;
     $$ LANGUAGE plpgsql;
 
---Given energy, x,y, and maintainer_id
+-- Given energy, x, y, and maintainer_id
 -- add new sensor into sensor table
 CREATE OR REPLACE PROCEDURE placeSensor(enr integer, x real, y real, mid varchar(9)) AS
     $$
@@ -76,10 +77,8 @@ CREATE OR REPLACE PROCEDURE placeSensor(enr integer, x real, y real, mid varchar
     BEGIN
         -- Generate a new unique sensor ID
         SELECT COALESCE(MAX(sensor_id), 0) + 1 INTO new_sensor_id FROM SENSOR;
-
         -- Get the current synthetic time from the CLOCK table
         SELECT synthetic_time INTO synthetic_time FROM CLOCK;
-
         -- Insert a new entry into the SENSOR table
         INSERT INTO SENSOR(sensor_id, last_charged, energy, last_read, X, Y, maintainer_id)
         VALUES (new_sensor_id, synthetic_time, enr, synthetic_time, x, y, mid);
@@ -127,22 +126,34 @@ CREATE OR REPLACE PROCEDURE moveSensor(sid integer, x real, y real)AS
     END;
     $$ LANGUAGE plpgsql;
 
--- Given a SSN and abb
--- remove worker's employment for given state
--- does this correctly handle assigning sensor id to another worker?
-
+-- Given a SSN and abbreviation, remove entry from employed table.
+-- If possible, reassign all associated sensors to the
+-- worker with the lowest SSN working for the state.
 CREATE OR REPLACE PROCEDURE removeWorkerFromState(n char(9), abb char(2))AS
     $$
+    DECLARE
+        lowest_ssn integer;
     BEGIN
+        -- Fetch the lowest worker SSN for this state that isn't the provided SSN.
+        SELECT MIN(worker) INTO lowest_ssn
+        FROM EMPLOYED WHERE state = abb AND worker != n;
+        -- If there is no such SSN, delete all associated sensors.
+        IF lowest_ssn IS NULL THEN
+            DELETE FROM SENSOR
+            WHERE maintainer_id = n;
+        END IF;
+        -- Otherwise, reassign these sensors to the worker with the lowest SSN.
+        UPDATE SENSOR
+        SET maintainer_id = lowest_ssn
+        WHERE maintainer_id = n;
+        -- Remove the tuple.
         DELETE FROM EMPLOYED
-        WHERE SSN = n AND abbreviation = abb;
+        WHERE worker = n AND state = abb;
     END;
     $$ LANGUAGE plpgsql;
 
 -- Given sensor_id
--- delete sensor entry from sensor table
--- + any reports related should be deleted
-
+-- delete sensor entry from sensor table.
 CREATE OR REPLACE PROCEDURE removerSensor(sid integer)AS
     $$
     BEGIN
@@ -151,10 +162,8 @@ CREATE OR REPLACE PROCEDURE removerSensor(sid integer)AS
     END;
     $$ LANGUAGE plpgsql;
 
--- Given forest_id
--- List all sensors
-
-CREATE OR REPLACE FUNCTION listSensors(forest_id integer) RETURNS TABLE (
+-- Given forest_id, list all sensors within that forest.
+CREATE OR REPLACE FUNCTION listSensors(no integer) RETURNS TABLE (
         sensor_id integer,
         last_charged timestamp,
         energy integer,
@@ -163,23 +172,19 @@ CREATE OR REPLACE FUNCTION listSensors(forest_id integer) RETURNS TABLE (
         Y real,
         maintainer_id varchar(9)
     ) AS $$
+    DECLARE
+        rec_forest record;
     BEGIN
+        SELECT * INTO rec_forest FROM FOREST WHERE forest_no = no;
         RETURN QUERY
-        SELECT s.sensor_id, s.last_charged, s.energy, s.last_read, s.X, s.Y, s.maintainer_id
-        FROM SENSOR s
-        WHERE s.sensor_id IN (
-            SELECT sensor_id
-            FROM FOUND_IN
-            WHERE forest_no = forest_id
-        );
+        SELECT sensor_id, last_charged, energy, last_read, X, Y, maintainer_id
+        FROM SENSOR
+        WHERE (X BETWEEN rec_forest.MBR_XMin AND rec_forest.MBR_XMAX) AND
+              (Y BETWEEN rec_forest.MBR_YMin AND rec_forest.MBR_YMAX);
     END;
     $$ LANGUAGE plpgsql;
 
-
-
--- Given SSN
--- Display all sensors
-
+-- Given an SSN, display all sensors associated with that worker.
 CREATE OR REPLACE FUNCTION listMaintainedSensors(n char(9)) RETURNS TABLE (
         sensor_id integer,
         last_charged timestamp,
@@ -197,22 +202,23 @@ CREATE OR REPLACE FUNCTION listMaintainedSensors(n char(9)) RETURNS TABLE (
     END;
     $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION locateTreeSpecies(alpha VARCHAR, beta VARCHAR) RETURNS TABLE (
-        forest_no INTEGER,
-        name VARCHAR(30),
-        area INTEGER,
-        acid_level REAL,
-        MBR_XMin REAL,
-        MBR_XMax REAL,
-        MBR_YMin REAL,
-        MBR_YMax REAL
+-- Given an alpha string and beta string, list all forests
+-- that contain trees with a genus like alpha and an epithet
+-- like beta.
+CREATE OR REPLACE FUNCTION locateTreeSpecies(alpha varchar(30), beta varchar(30)) RETURNS TABLE (
+        forest_no integer,
+        name varchar(30),
+        area integer,
+        acid_level real,
+        MBR_XMin real,
+        MBR_XMax real,
+        MBR_YMin real,
+        MBR_YMax real
     ) AS $$
     BEGIN
         RETURN QUERY
-        SELECT f.forest_no, f.name, f.area, f.acid_level, f.MBR_XMin, f.MBR_XMax, f.MBR_YMin, f.MBR_YMax
-        FROM FOREST f
-        JOIN FOUND_IN fi ON f.forest_no = fi.forest_no
-        JOIN TREE_SPECIES ts ON ts.genus ILIKE alpha OR ts.epithet ILIKE beta
-        WHERE ts.genus = fi.genus AND ts.epithet = fi.epithet;
+        SELECT f.*
+        FROM FOREST f NATURAL JOIN FOUND_IN fi
+        WHERE fi.genus ILIKE alpha AND fi.epithet ILIKE beta;
     END;
     $$ LANGUAGE plpgsql;

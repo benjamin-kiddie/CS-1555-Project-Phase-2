@@ -28,7 +28,7 @@ CREATE TABLE FOREST (
     MBR_YMax real NOT NULL,
 
     CONSTRAINT forest_pk PRIMARY KEY (forest_no),
-    CONSTRAINT forest_bounded_acid_level CHECK (acid_level >= 0 AND acid_level <= 14)
+    CONSTRAINT forest_bounded_acid_level CHECK (acid_level BETWEEN 0 AND 14)
 );
 
 DROP TABLE IF EXISTS STATE CASCADE;
@@ -143,7 +143,7 @@ CREATE TABLE SENSOR (
     CONSTRAINT sensor_pk PRIMARY KEY (sensor_id),
     CONSTRAINT sensor_fk_worker FOREIGN KEY (maintainer_id) REFERENCES WORKER(SSN)
         ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINt sensor_bounded_energy CHECK (energy >= 0 AND energy <= 100)
+    CONSTRAINt sensor_bounded_energy CHECK (energy BETWEEN 0 AND 100)
 );
 
 DROP TABLE IF EXISTS REPORT CASCADE;
