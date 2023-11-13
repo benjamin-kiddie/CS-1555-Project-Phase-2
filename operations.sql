@@ -8,6 +8,8 @@
 
 SET SCHEMA 'arbor_db';
 
+-- Given a name, area, acid_level, and MBR bounds,
+-- add an entry to the forest table.
 CREATE OR REPLACE PROCEDURE addForest(n varchar(30), a integer, al real, xmin real,
                                         xmax real, ymin real, ymax real) AS
     $$
@@ -21,4 +23,4 @@ CREATE OR REPLACE PROCEDURE addForest(n varchar(30), a integer, al real, xmin re
     END;
     $$ LANGUAGE plpgsql;
 
-CALL addForest('Test 2', 513655, 0, 0, 20, 0, 20);
+CALL addForest('Test 3', 513655, 0, 0, 20, 0, 20);
