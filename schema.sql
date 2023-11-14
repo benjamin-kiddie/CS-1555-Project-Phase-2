@@ -10,6 +10,15 @@ DROP SCHEMA IF EXISTS arbor_db CASCADE;
 CREATE SCHEMA arbor_db;
 SET SCHEMA 'arbor_db';
 
+------------------------------------------------------
+-- CLOCK table.
+--
+-- Keys:
+-- PK -> synthetic_time (timestamp)
+--
+-- Assumptions:
+-- Only one synthetic time can exist.
+------------------------------------------------------
 DROP TABLE IF EXISTS CLOCK CASCADE;
 CREATE TABLE CLOCK (
     synthetic_time timestamp,
@@ -17,6 +26,20 @@ CREATE TABLE CLOCK (
     CONSTRAINT clock_pk PRIMARY KEY (synthetic_time)
 );
 
+------------------------------------------------------
+-- FOREST table.
+--
+-- Keys:
+-- PK -> forest_no (integer)
+--
+-- Assumptions:
+-- Acid level must be between 0 and 14.
+-- No two forests can have overlapping MBRs.
+-- Area the area of the MBR using given points.
+-- MBR bounds must be given.
+-- MBR area cannot be 0 or negative, nor can max
+--  values be less than min values.
+------------------------------------------------------
 DROP TABLE IF EXISTS FOREST CASCADE;
 CREATE TABLE FOREST (
     forest_no integer,
@@ -32,6 +55,21 @@ CREATE TABLE FOREST (
     CONSTRAINT forest_bounded_acid_level CHECK (acid_level BETWEEN 0 AND 14)
 );
 
+------------------------------------------------------
+-- STATE table.
+--
+-- Keys:
+-- PK -> abbreviation (varchar(2))
+--
+-- Assumptions:
+-- State name is unique.
+-- Population is non-negative.
+-- No two states can have overlapping MBRs.
+-- Area the area of the MBR using given points.
+-- MBR bounds must be given.
+-- MBR area cannot be 0 or negative, nor can max
+--  values be less than min values.
+------------------------------------------------------
 DROP TABLE IF EXISTS STATE CASCADE;
 CREATE TABLE STATE (
     name varchar(30),
@@ -62,6 +100,15 @@ CREATE DOMAIN raunkiaer_life_form AS varchar(16)
         )
     );
 
+------------------------------------------------------
+-- TREE_SPECIES table.
+--
+-- Keys:
+-- PK -> (genus, epithet) (both varchar(30))
+--
+-- Assumptions:
+-- Largest height must be greater than 0.
+------------------------------------------------------
 DROP TABLE IF EXISTS TREE_SPECIES CASCADE;
 CREATE TABLE TREE_SPECIES (
     genus varchar(30),
@@ -74,6 +121,17 @@ CREATE TABLE TREE_SPECIES (
     CONSTRAINT tree_positive_largest_height CHECK (largest_height > 0)
 );
 
+------------------------------------------------------
+-- TREE_COMMON_NAME table.
+--
+-- Keys:
+-- PK -> (genus, epithet, common_name)
+--  (all varchar(30))
+--
+-- Assumptions:
+-- Multiple species can share same common name.
+-- Same species can have multiple common names.
+------------------------------------------------------
 DROP TABLE IF EXISTS TREE_COMMON_NAME CASCADE;
 CREATE TABLE TREE_COMMON_NAME (
     genus varchar(30),
@@ -93,6 +151,15 @@ CREATE DOMAIN rank AS varchar(10)
         )
     );
 
+------------------------------------------------------
+-- WORKER table.
+--
+-- Keys:
+-- PK -> (SSN) (varchar(9))
+--
+-- Assumptions:
+-- SSN must be 9 digits.
+------------------------------------------------------
 DROP TABLE IF EXISTS WORKER CASCADE;
 CREATE TABLE WORKER (
     SSN char(9),
@@ -105,6 +172,18 @@ CREATE TABLE WORKER (
     CONSTRAINT worker_valid_ssn CHECK (SSN SIMILAR TO '[0-9]{9}')
 );
 
+------------------------------------------------------
+-- PHONE table.
+--
+-- Keys:
+-- PK -> number (varchar(16))
+-- FK -> worker (varchar(9)) references WORKER(SSN)
+--
+-- Assumptions:
+-- Number must be 10 digits.
+-- On update/deletion of worker, all associated
+--  numbers are updated/deleted.
+------------------------------------------------------
 DROP TABLE IF EXISTS PHONE CASCADE;
 CREATE TABLE PHONE (
     worker varchar(9),
@@ -115,9 +194,25 @@ CREATE TABLE PHONE (
     CONSTRAINT phone_fk_worker FOREIGN KEY (worker) REFERENCES WORKER(SSN)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT phone_valid_number CHECK
-        (number LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]')
+        (number SIMILAR TO '[0-9]{10}')
 );
 
+------------------------------------------------------
+-- EMPLOYED table.
+--
+-- Keys:
+-- PK -> (state, worker) (varchar(2) and varchar(9))
+-- FK -> state (varchar(2)) references
+--  STATE(abbreviation)
+-- FK -> worker (varchar(9)) references WORKER(SSN)
+--
+-- Assumptions:
+-- Worker can be employed by multiple states.
+-- On update/deletion of state, all associated
+--  employments are updated/deleted.
+-- On update/deletion of worker, all associated
+--  employments are updated/deleted.
+------------------------------------------------------
 DROP TABLE IF EXISTS EMPLOYED CASCADE;
 CREATE TABLE EMPLOYED (
     state varchar(2),
@@ -130,6 +225,25 @@ CREATE TABLE EMPLOYED (
         ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+------------------------------------------------------
+-- SENSOR table.
+--
+-- Keys:
+-- PK -> sensor_id (integer)
+-- FK -> maintainer_id (varchar(9)) references
+--  WORKER(SSN)
+--
+-- Assumptions:
+-- Energy must be between 0 and 100.
+-- Sensors must be located at a point within the
+--  MBR bounds of a state that the maintainer is
+--  employed at.
+-- Upon unemployment of the maintainer, sensor is
+--  reassigned to the minimum SSN worker in the same
+--  state if possible, or deleted if not.
+-- On update/deletion of a maintainer, associated
+--  sensors are updated/deleted.
+------------------------------------------------------
 DROP TABLE IF EXISTS SENSOR CASCADE;
 CREATE TABLE SENSOR (
     sensor_id integer,
@@ -146,6 +260,19 @@ CREATE TABLE SENSOR (
     CONSTRAINt sensor_bounded_energy CHECK (energy BETWEEN 0 AND 100)
 );
 
+------------------------------------------------------
+-- REPORT table.
+--
+-- Keys:
+-- PK -> (sensor_id, report_time) (integer, timestamp)
+-- FK -> sensor_id (integer) references
+--  SENSOR(sensor_id)
+--
+-- Assumptions:
+-- Temperature must be given.
+-- On update/deletion of sensor, all associated
+--  reports are updated/deleted.
+------------------------------------------------------
 DROP TABLE IF EXISTS REPORT CASCADE;
 CREATE TABLE REPORT (
     sensor_id integer,
@@ -157,6 +284,26 @@ CREATE TABLE REPORT (
         ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+------------------------------------------------------
+-- COVERAGE table.
+--
+-- Keys:
+-- PK -> (forest_no, state) (integer, varchar(2))
+-- FK -> forest_no (integer) references
+--  FOREST(forest_no)
+-- FK -> state (varchar(2)) references
+--  STATE(abbreviation)
+--
+-- Assumptions:
+-- Entries are auto-calculated upon insertion of a
+--  forest and updated whenever forest bounds change.
+-- Percentage must be greater than 0 and less than
+--  100.
+-- On update/deletion of a state, all associated
+--  coverage is updated/deleted.
+-- UN update/deletion of a forest, all associated
+--  coverage is updated/deleted.
+------------------------------------------------------
 DROP TABLE IF EXISTS COVERAGE CASCADE;
 CREATE TABLE COVERAGE (
     forest_no integer,
@@ -168,9 +315,27 @@ CREATE TABLE COVERAGE (
     CONSTRAINT coverage_fk_forest FOREIGN KEY (forest_no) REFERENCES FOREST(forest_no)
         ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT coverage_fk_state FOREIGN KEY (state) REFERENCES STATE(abbreviation)
-        ON UPDATE CASCADE ON DELETE CASCADE
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT coverage_bounded_percent CHECK (percentage > 0 AND percentage <= 100)
 );
 
+------------------------------------------------------
+-- FOUND_IN table.
+--
+-- Keys:
+-- PK -> (forest_no, genus, epithet)
+--  (integer, varchar(30), varchar(30))
+-- FK -> forest_no (integer) references
+--  FOREST(forest_no)
+-- FK -> (genus, epithet) (both varchar(30))
+--  references TREE_SPECIES(genus, epithet)
+--
+-- Assumptions:
+-- On update/deletion of a forest, all associated
+--  findings are updated/deleted.
+-- UN update/deletion of a species, all associated
+--  findings are updated/deleted.
+------------------------------------------------------
 DROP TABLE IF EXISTS FOUND_IN CASCADE;
 CREATE TABLE FOUND_IN (
     forest_no integer,
