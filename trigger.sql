@@ -53,10 +53,10 @@ CREATE OR REPLACE FUNCTION addForestCoverage() RETURNS TRIGGER AS
                 CONTINUE;
             END IF;
             -- If so, calculate area overlap.
-            x_dist = min(NEW.mbr_xmax, rec_state.mbr_xmax) - max(NEW.mbr_xmin, rec_state.mbr_xmin);
-            y_dist = min(NEW.mbr_ymax, rec_state.mbr_ymax) - max(NEW.mbr_ymin, rec_state.mbr_ymin);
+            x_dist = least(NEW.mbr_xmax, rec_state.mbr_xmax) - greatest(NEW.mbr_xmin, rec_state.mbr_xmin);
+            y_dist = least(NEW.mbr_ymax, rec_state.mbr_ymax) - greatest(NEW.mbr_ymin, rec_state.mbr_ymin);
             area = x_dist * y_dist;
-            percentage = area / NEW.area;
+            percentage = area / NEW.area * 100;
             -- Insert into COVERAGE table.
             INSERT INTO COVERAGE
             VALUES (NEW.forest_no, rec_state.abbreviation, percentage, area);
@@ -198,17 +198,17 @@ CREATE TRIGGER checkForestOverlap
 CREATE OR REPLACE FUNCTION checkMaintainerEmployment() RETURNS TRIGGER AS
     $$
     DECLARE
-        rec_state_abb record;
+        rec_employed record;
         rec_state record;
     BEGIN
         -- For each state (abbreviation) that the worker is employed in...
-        FOR rec_state_abb IN SELECT state FROM EMPLOYED WHERE worker = NEW.maintainer_id
+        FOR rec_employed IN SELECT state FROM EMPLOYED WHERE worker = NEW.maintainer_id
         LOOP
             -- First, obtain the full state tuple.
-            SELECT * INTO rec_state FROM STATE WHERE abbreviation = rec_state_abb.state;
+            SELECT * INTO rec_state FROM STATE WHERE abbreviation = rec_employed.state;
             -- If the X and Y position of the sensor lies within state, proceed with insert/update.
-            IF NEW.X <= rec_state.MBR_XMax AND NEW.X >= rec_state.MBR_XMin
-                AND NEW.Y <= rec_state.MBR_YMax AND NEW.Y >= rec_state.MBR_YMin THEN
+            IF (NEW.X BETWEEN rec_state.MBR_XMin AND rec_state.MBR_XMAX)
+                AND (NEW.Y BETWEEN rec_state.MBR_YMin AND rec_state.MBR_YMax) THEN
                 RETURN NEW;
             END IF;
         END LOOP;
@@ -216,7 +216,7 @@ CREATE OR REPLACE FUNCTION checkMaintainerEmployment() RETURNS TRIGGER AS
         RAISE 'maintainer_not_employed_in_state' USING errcode = 'NOEMP';
     EXCEPTION
         WHEN sqlstate 'NOEMP' THEN
-            RAISE NOTICE 'The new maintainer of this sensor is not employed by a state which covers the sensor. This operation has been reverted.';
+            RAISE NOTICE 'The maintainer of this sensor is not employed by a state which covers the sensor. Operation reverted.';
             RETURN OLD;
     END;
     $$ LANGUAGE plpgsql;
@@ -229,22 +229,69 @@ CREATE TRIGGER checkMaintainerEmployment
     EXECUTE FUNCTION checkMaintainerEmployment();
 
 -------------------------------------------------------------------
--- Trigger for reassigning sensors after worker's employment deletion
-CREATE OR REPLACE FUNCTION reassignSensors() RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE SENSOR
-    SET maintainer_id = (
-        SELECT MIN(worker)
-        FROM EMPLOYED e
-        WHERE e.state = OLD.state AND e.worker != OLD.worker
-    )
-    WHERE maintainer_id = OLD.worker;
 
-    RETURN OLD;
+-- Updates sensor maintainer when an employment entry is deleted.
+-- Finds the lowest SSN in the same state and sets that SSN as the maintainer.
+-- If no such SSN exists, deletes all associated sensors.
+CREATE OR REPLACE FUNCTION reassignSensors() RETURNS TRIGGER AS $$
+DECLARE
+    lowest_ssn integer;
+    rec_state record;
+BEGIN
+    -- Fetch the state from which the worker is being removed.
+    SELECT * INTO rec_state FROM STATE WHERE abbreviation = OLD.state;
+    -- Fetch the lowest worker SSN for this state that isn't the current maintainer.
+    SELECT MIN(worker) INTO lowest_ssn
+    FROM EMPLOYED WHERE state = OLD.state AND worker != OLD.worker;
+    -- If there is no such SSN, delete all sensors that
+    -- exist within this state and are maintained by this worker.
+    IF lowest_ssn IS NULL THEN
+        DELETE FROM SENSOR
+        WHERE maintainer_id = OLD.worker
+            AND (X BETWEEN rec_state.mbr_xmin AND rec_state.mbr_xmax)
+            AND (Y BETWEEN rec_state.mbr_ymin AND rec_state.mbr_ymax);
+    END IF;
+    -- Otherwise, reassign these sensors to the worker with the lowest SSN.
+    UPDATE SENSOR
+    SET maintainer_id = lowest_ssn
+    WHERE maintainer_id = OLD.worker
+        AND (X BETWEEN rec_state.mbr_xmin AND rec_state.mbr_xmax)
+        AND (Y BETWEEN rec_state.mbr_ymin AND rec_state.mbr_ymax);
+    -- Return the new table.
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER reassign_sensors_trigger
-AFTER DELETE ON EMPLOYED
-FOR EACH ROW
-EXECUTE FUNCTION reassignSensors();
+DROP TRIGGER IF EXISTS reassignSensors ON EMPLOYED;
+CREATE TRIGGER reassignSensors
+    AFTER DELETE
+    ON EMPLOYED
+    FOR EACH ROW
+    EXECUTE FUNCTION reassignSensors();
+
+-------------------------------------------------------------------
+
+-- Prevents an insert to clock if there is already a timestamp.
+CREATE OR REPLACE FUNCTION capClockEntries() RETURNS TRIGGER AS
+    $$
+    DECLARE
+        num integer;
+    BEGIN
+        SELECT COUNT(*) INTO num FROM CLOCK;
+        IF num > 1 THEN
+            RAISE 'num_clock_entries' USING errcode = 'NCLCK';
+        END IF;
+        RETURN NEW;
+    EXCEPTION
+        WHEN sqlstate 'NCLCK' THEN
+            RAISE NOTICE 'Cannot have more than one time entry in clock. Operation reverted.';
+            RETURN OLD;
+    END;
+    $$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS capClockEntries ON CLOCK;
+CREATE TRIGGER capClockEntries
+    BEFORE INSERT
+    ON CLOCK
+    FOR EACH ROW
+    EXECUTE FUNCTION capClockEntries();

@@ -56,7 +56,6 @@ CREATE OR REPLACE PROCEDURE newWorker(n char(9), f varchar(30), l varchar(30), m
     END;
     $$ LANGUAGE plpgsql;
 
-
 -- Given an ssn and abbreviation, add an entry to
 -- the employed table.
 CREATE OR REPLACE PROCEDURE employWorkerToState(ssn char(9), abb char(2)) AS
@@ -73,15 +72,15 @@ CREATE OR REPLACE PROCEDURE placeSensor(enr integer, x real, y real, mid varchar
     $$
     DECLARE
         new_sensor_id integer;
-        synthetic_time timestamp;
+        time timestamp;
     BEGIN
         -- Generate a new unique sensor ID
         SELECT COALESCE(MAX(sensor_id), 0) + 1 INTO new_sensor_id FROM SENSOR;
         -- Get the current synthetic time from the CLOCK table
-        SELECT synthetic_time INTO synthetic_time FROM CLOCK;
+        SELECT synthetic_time INTO time FROM CLOCK;
         -- Insert a new entry into the SENSOR table
         INSERT INTO SENSOR(sensor_id, last_charged, energy, last_read, X, Y, maintainer_id)
-        VALUES (new_sensor_id, synthetic_time, enr, synthetic_time, x, y, mid);
+        VALUES (new_sensor_id, time, enr, time, x, y, mid);
     END;
     $$ LANGUAGE plpgsql;
 
@@ -98,7 +97,7 @@ CREATE OR REPLACE PROCEDURE generateReport(sid integer, rt timestamp, temp real)
 
 -- Given an genus, epithet, and forest_no, remove
 -- an entry from the found in table.
-CREATE OR REPLACE PROCEDURE removeSpeciesFromForest(gen varchar(30), epi varchar(30), no integer) AS
+CREATE OR REPLACE PROCEDURE removeSpeciesFromForest(no integer, gen varchar(30), epi varchar(30)) AS
     $$
     BEGIN
         DELETE FROM FOUND_IN
@@ -117,11 +116,11 @@ CREATE OR REPLACE PROCEDURE deleteWorker(n varchar(9)) AS
 -- Given sensor_id and X,Y
 -- Update sensor in sensor table
 
-CREATE OR REPLACE PROCEDURE moveSensor(sid integer, x real, y real)AS
+CREATE OR REPLACE PROCEDURE moveSensor(sid integer, new_x real, new_y real) AS
     $$
     BEGIN
-        UPDATE SENSOR
-        SET X = x, Y = y
+        UPDATE SENSOR s
+        SET X = new_x, Y = new_y
         WHERE sensor_id = sid;
     END;
     $$ LANGUAGE plpgsql;
@@ -129,24 +128,9 @@ CREATE OR REPLACE PROCEDURE moveSensor(sid integer, x real, y real)AS
 -- Given a SSN and abbreviation, remove entry from employed table.
 -- If possible, reassign all associated sensors to the
 -- worker with the lowest SSN working for the state.
-CREATE OR REPLACE PROCEDURE removeWorkerFromState(n char(9), abb char(2))AS
+CREATE OR REPLACE PROCEDURE removeWorkerFromState(n char(9), abb char(2)) AS
     $$
-    DECLARE
-        lowest_ssn integer;
     BEGIN
-        -- Fetch the lowest worker SSN for this state that isn't the provided SSN.
-        SELECT MIN(worker) INTO lowest_ssn
-        FROM EMPLOYED WHERE state = abb AND worker != n;
-        -- If there is no such SSN, delete all associated sensors.
-        IF lowest_ssn IS NULL THEN
-            DELETE FROM SENSOR
-            WHERE maintainer_id = n;
-        END IF;
-        -- Otherwise, reassign these sensors to the worker with the lowest SSN.
-        UPDATE SENSOR
-        SET maintainer_id = lowest_ssn
-        WHERE maintainer_id = n;
-        -- Remove the tuple.
         DELETE FROM EMPLOYED
         WHERE worker = n AND state = abb;
     END;
@@ -177,10 +161,10 @@ CREATE OR REPLACE FUNCTION listSensors(no integer) RETURNS TABLE (
     BEGIN
         SELECT * INTO rec_forest FROM FOREST WHERE forest_no = no;
         RETURN QUERY
-        SELECT sensor_id, last_charged, energy, last_read, X, Y, maintainer_id
-        FROM SENSOR
-        WHERE (X BETWEEN rec_forest.MBR_XMin AND rec_forest.MBR_XMAX) AND
-              (Y BETWEEN rec_forest.MBR_YMin AND rec_forest.MBR_YMAX);
+        SELECT s.*
+        FROM SENSOR s
+        WHERE (s.X BETWEEN rec_forest.MBR_XMin AND rec_forest.MBR_XMAX) AND
+              (s.Y BETWEEN rec_forest.MBR_YMin AND rec_forest.MBR_YMAX);
     END;
     $$ LANGUAGE plpgsql;
 
@@ -196,9 +180,9 @@ CREATE OR REPLACE FUNCTION listMaintainedSensors(n char(9)) RETURNS TABLE (
     ) AS $$
     BEGIN
         RETURN QUERY
-        SELECT sensor_id, last_charged, energy, last_read, X, Y, maintainer_id
-        FROM SENSOR
-        WHERE maintainer_id = n;
+        SELECT s.*
+        FROM SENSOR s
+        WHERE s.maintainer_id = n;
     END;
     $$ LANGUAGE plpgsql;
 

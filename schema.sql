@@ -13,6 +13,7 @@ SET SCHEMA 'arbor_db';
 DROP TABLE IF EXISTS CLOCK CASCADE;
 CREATE TABLE CLOCK (
     synthetic_time timestamp,
+
     CONSTRAINT clock_pk PRIMARY KEY (synthetic_time)
 );
 
@@ -101,8 +102,7 @@ CREATE TABLE WORKER (
     rank rank,
 
     CONSTRAINT worker_pk PRIMARY KEY (SSN),
-    CONSTRAINT worker_valid_ssn CHECK
-        (SSN LIKE '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]')
+    CONSTRAINT worker_valid_ssn CHECK (SSN SIMILAR TO '[0-9]{9}')
 );
 
 DROP TABLE IF EXISTS PHONE CASCADE;
