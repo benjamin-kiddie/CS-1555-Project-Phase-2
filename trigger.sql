@@ -15,11 +15,11 @@ CREATE OR REPLACE FUNCTION checkMBROverlap(rec_1 record, rec_2 record) RETURNS b
         overlap boolean := true;
     BEGIN
         -- Check if MBRs are mutually outside other's x-bounds.
-        IF rec_1.mbr_xmin > rec_2.mbr_xmax OR rec_1.mbr_xmin > rec_2.mbr_xmax THEN
+        IF rec_1.mbr_xmin > rec_2.mbr_xmax OR rec_2.mbr_xmin > rec_1.mbr_xmax THEN
             overlap := false;
         END IF;
         -- Check if MBRs are mutually outside other's y-bounds.
-        IF rec_1.mbr_ymin > rec_2.mbr_ymax OR rec_1.mbr_ymin > rec_2.mbr_ymax THEN
+        IF rec_1.mbr_ymin > rec_2.mbr_ymax OR rec_2.mbr_ymin > rec_1.mbr_ymax THEN
             overlap := false;
         END IF;
         RETURN overlap;
@@ -217,7 +217,6 @@ CREATE OR REPLACE FUNCTION checkMaintainerEmployment() RETURNS TRIGGER AS
             SELECT * INTO rec_state FROM STATE WHERE abbreviation = rec_employed.state;
             -- If the X and Y position of the sensor lies within state, proceed with insert/update.
             IF checkSensorInMBR(NEW, rec_state) THEN
-                RAISE NOTICE 'Found permissable state.';
                 RETURN NEW;
             END IF;
         END LOOP;
@@ -244,7 +243,7 @@ CREATE TRIGGER checkMaintainerEmployment
 -- If no such SSN exists, deletes all associated sensors.
 CREATE OR REPLACE FUNCTION reassignSensors() RETURNS TRIGGER AS $$
 DECLARE
-    lowest_ssn integer;
+    lowest_ssn varchar(9);
     rec_state record;
 BEGIN
     -- Fetch the state from which the worker is being removed.

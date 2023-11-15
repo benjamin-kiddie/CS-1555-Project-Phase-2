@@ -20,6 +20,10 @@ CALL moveSensor(1, 100, 100);
 SELECT MIN(worker)
 FROM EMPLOYED
 WHERE state = 'RI' AND worker != '000000000';
+UPDATE sensor
+SET maintainer_id = '000000000'
+WHERE sensor_id = 1;
+CALL employWorkerToState('000000000', 'RI');
 CALL removeWorkerFromState('000000000', 'RI');
 
 SELECT * FROM listSensors(1);
