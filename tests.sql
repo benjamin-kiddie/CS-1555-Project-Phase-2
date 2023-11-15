@@ -5,7 +5,7 @@
 -- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
 ------------------------------------------------
 
-SET SCHEMA 'public';
+SET SCHEMA 'arbor_db';
 
 -- Testing of operations:
 INSERT INTO CLOCK VALUES (NOW());

@@ -6,7 +6,7 @@
 -- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
 ------------------------------------------------
 
-SET SCHEMA 'public';
+SET SCHEMA 'arbor_db';
 
 -- Given a name, area, acid_level, and MBR bounds,
 -- add an entry to the forest table.

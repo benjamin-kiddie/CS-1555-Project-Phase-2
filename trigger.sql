@@ -6,7 +6,7 @@
 -- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
 ------------------------------------------------
 
-SET SCHEMA 'public';
+SET SCHEMA 'arbor_db';
 
 -- Reusable function. Checks if two MBRs overlap.
 CREATE OR REPLACE FUNCTION checkMBROverlap(rec_1 record, rec_2 record) RETURNS boolean AS
@@ -29,7 +29,7 @@ CREATE OR REPLACE FUNCTION checkMBROverlap(rec_1 record, rec_2 record) RETURNS b
 -----------------------------------------------------------------
 
 -- Reusable function. Checks if a sensor falls within an MBR.
-CREATE OR REPLACE FUNCTION checkSensorInMBR(rec_sensor record, rec_mbr record) RETURNS boolean AS
+CREATE OR REPLACE FUNCTION arbor_db.checkSensorInMBR(rec_sensor record, rec_mbr record) RETURNS boolean AS
     $$
     DECLARE
         overlap boolean := true;
@@ -61,10 +61,10 @@ CREATE OR REPLACE FUNCTION addForestCoverage() RETURNS TRIGGER AS
         percentage real;
     BEGIN
         -- Loop through all states.
-        FOR rec_state IN SELECT abbreviation, mbr_xmin, mbr_xmax, mbr_ymin, mbr_ymax FROM STATE
+        FOR rec_state IN SELECT abbreviation, mbr_xmin, mbr_xmax, mbr_ymin, mbr_ymax FROM arbor_db.STATE
         LOOP
             -- Check if forest overlaps with current state.
-            IF NOT checkMBROverlap(NEW, rec_state) THEN
+            IF NOT arbor_db.checkMBROverlap(NEW, rec_state) THEN
                 CONTINUE;
             END IF;
             -- If so, calculate area overlap.
@@ -73,7 +73,7 @@ CREATE OR REPLACE FUNCTION addForestCoverage() RETURNS TRIGGER AS
             area = x_dist * y_dist;
             percentage = cast(area as real) / cast(NEW.area as real) * 100;
             -- Insert into COVERAGE table.
-            INSERT INTO COVERAGE
+            INSERT INTO arbor_db.COVERAGE
             VALUES (NEW.forest_no, rec_state.abbreviation, percentage, area);
         END LOOP;
         -- Return.
@@ -141,11 +141,11 @@ CREATE OR REPLACE FUNCTION checkStateOverlap() RETURNS TRIGGER AS
         rec_state record;
     BEGIN
         -- Loop over all states, checking for overlap.
-        FOR rec_state IN SELECT abbreviation, mbr_xmin, mbr_xmax, mbr_ymin, mbr_ymax FROM STATE
+        FOR rec_state IN SELECT abbreviation, mbr_xmin, mbr_xmax, mbr_ymin, mbr_ymax FROM arbor_db.STATE
         LOOP
             -- If state will overlap with existing state, raise an exception.
             IF NEW.abbreviation != rec_state.abbreviation
-                   AND checkMBROverlap(NEW, rec_state) THEN
+                   AND arbor_db.checkMBROverlap(NEW, rec_state) THEN
                 RAISE 'overlap_with_existing_state' USING errcode = 'SOLAP';
             END IF;
         END LOOP;
@@ -175,11 +175,11 @@ CREATE OR REPLACE FUNCTION checkForestOverlap() RETURNS TRIGGER AS
         rec_forest record;
     BEGIN
         -- Loop over all states, checking for overlap.
-        FOR rec_forest IN SELECT forest_no, mbr_xmin, mbr_xmax, mbr_ymin, mbr_ymax FROM FOREST
+        FOR rec_forest IN SELECT forest_no, mbr_xmin, mbr_xmax, mbr_ymin, mbr_ymax FROM arbor_db.FOREST
         LOOP
             -- If forest will overlap with existing forest, raise an exception.
             IF NEW.forest_no != rec_forest.forest_no
-                   AND checkMBROverlap(NEW, rec_forest) THEN
+                   AND arbor_db.checkMBROverlap(NEW, rec_forest) THEN
                 RAISE 'overlap_with_existing_forest' USING errcode = 'FOLAP';
             END IF;
         END LOOP;
@@ -211,12 +211,12 @@ CREATE OR REPLACE FUNCTION checkMaintainerEmployment() RETURNS TRIGGER AS
         rec_state record;
     BEGIN
         -- For each state (abbreviation) that the worker is employed in...
-        FOR rec_employed IN SELECT state FROM EMPLOYED WHERE worker = NEW.maintainer_id
+        FOR rec_employed IN SELECT state FROM arbor_db.EMPLOYED WHERE worker = NEW.maintainer_id
         LOOP
             -- First, obtain the full state tuple.
-            SELECT * INTO rec_state FROM STATE WHERE abbreviation = rec_employed.state;
+            SELECT * INTO rec_state FROM arbor_db.STATE WHERE abbreviation = rec_employed.state;
             -- If the X and Y position of the sensor lies within state, proceed with insert/update.
-            IF checkSensorInMBR(NEW, rec_state) THEN
+            IF arbor_db.checkSensorInMBR(NEW, rec_state) THEN
                 RETURN NEW;
             END IF;
         END LOOP;
@@ -250,17 +250,17 @@ BEGIN
     SELECT * INTO rec_state FROM STATE WHERE abbreviation = OLD.state;
     -- Fetch the lowest worker SSN for this state that isn't the current maintainer.
     SELECT MIN(worker) INTO lowest_ssn
-    FROM EMPLOYED WHERE state = OLD.state AND worker != OLD.worker;
+    FROM arbor_db.EMPLOYED WHERE state = OLD.state AND worker != OLD.worker;
     -- If there is no such SSN, delete all sensors that
     -- exist within this state and are maintained by this worker.
     IF lowest_ssn IS NULL THEN
-        DELETE FROM SENSOR
+        DELETE FROM arbor_db.SENSOR
         WHERE maintainer_id = OLD.worker
             AND (X BETWEEN rec_state.mbr_xmin AND rec_state.mbr_xmax)
             AND (Y BETWEEN rec_state.mbr_ymin AND rec_state.mbr_ymax);
     END IF;
     -- Otherwise, reassign these sensors to the worker with the lowest SSN.
-    UPDATE SENSOR
+    UPDATE arbor_db.SENSOR
     SET maintainer_id = lowest_ssn
     WHERE maintainer_id = OLD.worker
         AND (X BETWEEN rec_state.mbr_xmin AND rec_state.mbr_xmax)
@@ -285,7 +285,7 @@ CREATE OR REPLACE FUNCTION capClockEntries() RETURNS TRIGGER AS
     DECLARE
         num integer;
     BEGIN
-        SELECT COUNT(*) INTO num FROM CLOCK;
+        SELECT COUNT(*) INTO num FROM arbor_db.CLOCK;
         IF num > 1 THEN
             RAISE 'num_clock_entries' USING errcode = 'NCLCK';
         END IF;
