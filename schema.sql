@@ -6,9 +6,9 @@
 -- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
 ------------------------------------------------
 
-DROP SCHEMA IF EXISTS arbor_db CASCADE;
-CREATE SCHEMA arbor_db;
-SET SCHEMA 'arbor_db';
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public;
+SET SCHEMA 'public';
 
 ------------------------------------------------------
 -- CLOCK table.

@@ -6,7 +6,7 @@
 -- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
 ------------------------------------------------
 
-SET SCHEMA 'arbor_db';
+SET SCHEMA 'public';
 
 -- Reusable function. Checks if two MBRs overlap.
 CREATE OR REPLACE FUNCTION checkMBROverlap(rec_1 record, rec_2 record) RETURNS boolean AS
@@ -71,7 +71,7 @@ CREATE OR REPLACE FUNCTION addForestCoverage() RETURNS TRIGGER AS
             x_dist = least(NEW.mbr_xmax, rec_state.mbr_xmax) - greatest(NEW.mbr_xmin, rec_state.mbr_xmin);
             y_dist = least(NEW.mbr_ymax, rec_state.mbr_ymax) - greatest(NEW.mbr_ymin, rec_state.mbr_ymin);
             area = x_dist * y_dist;
-            percentage = area / NEW.area * 100;
+            percentage = cast(area as real) / cast(NEW.area as real) * 100;
             -- Insert into COVERAGE table.
             INSERT INTO COVERAGE
             VALUES (NEW.forest_no, rec_state.abbreviation, percentage, area);

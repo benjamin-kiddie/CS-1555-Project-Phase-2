@@ -1,9 +1,17 @@
-SET SCHEMA 'arbor_db';
+------------------------------------------------
+-- CS1555/2055 Project 2 Tests
+-- File for storing various test queries.
+--
+-- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
+------------------------------------------------
+
+SET SCHEMA 'public';
 
 -- Testing of operations:
 INSERT INTO CLOCK VALUES (NOW());
 INSERT INTO STATE VALUES ('Rhode Island', 'RI', 0, 1, 0, 20, 0, 20);
 INSERT INTO STATE VALUES ('New York', 'NY', 0, 1, 21, 40, 21, 40);
+INSERT INTO STATE VALUES ('New York 2', 'NL', 0, 1, 21, 40, 21, 40);
 CALL addForest('Test Forest', 0, 7, 0, 20, 0, 20);
 CALL addTreeSpecies('Test', 'Species', 100, 7, 'Epiphytes');
 CALL addSpeciesToForest(1, 'Test', 'Species');
@@ -27,5 +35,5 @@ CALL employWorkerToState('000000000', 'RI');
 CALL removeWorkerFromState('000000000', 'RI');
 
 SELECT * FROM listSensors(1);
-SELECT * FROM listMaintainedSensors('000000000');
+SELECT * FROM listMaintainedSensors('873331998');
 SELECT * FROM locateTreeSpecies('Test', 'Species');

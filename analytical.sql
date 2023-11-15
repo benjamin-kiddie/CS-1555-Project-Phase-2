@@ -1,0 +1,6 @@
+------------------------------------------------
+-- CS1555/2055 Project 2 Analytical Queries
+-- Implements all assigned analytical queries.
+--
+-- Authors: Hala Nubani, Ethan Wells, Ben Kiddie
+------------------------------------------------
