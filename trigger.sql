@@ -9,24 +9,42 @@
 SET SCHEMA 'arbor_db';
 
 -- Reusable function. Checks if two MBRs overlap.
-CREATE OR REPLACE FUNCTION checkMBROverlap(xmin1 real, xmin2 real, ymin1 real,
-    ymin2 real, xmax1 real, xmax2 real, ymax1 real, ymax2 real) RETURNS boolean AS
+CREATE OR REPLACE FUNCTION checkMBROverlap(rec_1 record, rec_2 record) RETURNS boolean AS
     $$
     DECLARE
         overlap boolean := true;
     BEGIN
         -- Check if MBRs are mutually outside other's x-bounds.
-        IF xmin1 > xmax2 OR xmin2 > xmax1 THEN
+        IF rec_1.mbr_xmin > rec_2.mbr_xmax OR rec_1.mbr_xmin > rec_2.mbr_xmax THEN
             overlap := false;
         END IF;
         -- Check if MBRs are mutually outside other's y-bounds.
-        IF ymin1 > ymax2 OR ymin2 > ymax1 THEN
+        IF rec_1.mbr_ymin > rec_2.mbr_ymax OR rec_1.mbr_ymin > rec_2.mbr_ymax THEN
             overlap := false;
         END IF;
         RETURN overlap;
     END;
     $$ LANGUAGE plpgsql;
 
+-----------------------------------------------------------------
+
+-- Reusable function. Checks if a sensor falls within an MBR.
+CREATE OR REPLACE FUNCTION checkSensorInMBR(rec_sensor record, rec_mbr record) RETURNS boolean AS
+    $$
+    DECLARE
+        overlap boolean := true;
+    BEGIN
+        -- Check if MBRs are mutually outside other's x-bounds.
+        IF NOT rec_sensor.x BETWEEN rec_mbr.mbr_xmin AND rec_mbr.mbr_xmax THEN
+            overlap := false;
+        END IF;
+        -- Check if MBRs are mutually outside other's y-bounds.
+        IF NOT rec_sensor.y BETWEEN rec_mbr.mbr_ymin AND rec_mbr.mbr_ymax THEN
+            overlap := false;
+        END IF;
+        RETURN overlap;
+    END;
+    $$ LANGUAGE plpgsql;
 
 -----------------------------------------------------------------
 
@@ -46,10 +64,7 @@ CREATE OR REPLACE FUNCTION addForestCoverage() RETURNS TRIGGER AS
         FOR rec_state IN SELECT abbreviation, mbr_xmin, mbr_xmax, mbr_ymin, mbr_ymax FROM STATE
         LOOP
             -- Check if forest overlaps with current state.
-            IF NOT checkMBROverlap(NEW.mbr_xmin, rec_state.mbr_xmin,
-                NEW.mbr_ymin, rec_state.mbr_ymin,
-                NEW.mbr_xmax, rec_state.mbr_xmax,
-                NEW.mbr_ymax, rec_state.mbr_ymax) THEN
+            IF NOT checkMBROverlap(NEW, rec_state) THEN
                 CONTINUE;
             END IF;
             -- If so, calculate area overlap.
@@ -130,10 +145,7 @@ CREATE OR REPLACE FUNCTION checkStateOverlap() RETURNS TRIGGER AS
         LOOP
             -- If state will overlap with existing state, raise an exception.
             IF NEW.abbreviation != rec_state.abbreviation
-                   AND checkMBROverlap(NEW.mbr_xmin, rec_state.mbr_xmin,
-                NEW.mbr_ymin, rec_state.mbr_ymin,
-                NEW.mbr_xmax, rec_state.mbr_xmax,
-                NEW.mbr_ymax, rec_state.mbr_ymax) THEN
+                   AND checkMBROverlap(NEW, rec_state) THEN
                 RAISE 'overlap_with_existing_state' USING errcode = 'SOLAP';
             END IF;
         END LOOP;
@@ -167,10 +179,7 @@ CREATE OR REPLACE FUNCTION checkForestOverlap() RETURNS TRIGGER AS
         LOOP
             -- If forest will overlap with existing forest, raise an exception.
             IF NEW.forest_no != rec_forest.forest_no
-                   AND checkMBROverlap(NEW.mbr_xmin, rec_forest.mbr_xmin,
-                NEW.mbr_ymin, rec_forest.mbr_ymin,
-                NEW.mbr_xmax, rec_forest.mbr_xmax,
-                NEW.mbr_ymax, rec_forest.mbr_ymax) THEN
+                   AND checkMBROverlap(NEW, rec_forest) THEN
                 RAISE 'overlap_with_existing_forest' USING errcode = 'FOLAP';
             END IF;
         END LOOP;
@@ -207,8 +216,8 @@ CREATE OR REPLACE FUNCTION checkMaintainerEmployment() RETURNS TRIGGER AS
             -- First, obtain the full state tuple.
             SELECT * INTO rec_state FROM STATE WHERE abbreviation = rec_employed.state;
             -- If the X and Y position of the sensor lies within state, proceed with insert/update.
-            IF (NEW.X BETWEEN rec_state.MBR_XMin AND rec_state.MBR_XMAX)
-                AND (NEW.Y BETWEEN rec_state.MBR_YMin AND rec_state.MBR_YMax) THEN
+            IF checkSensorInMBR(NEW, rec_state) THEN
+                RAISE NOTICE 'Found permissable state.';
                 RETURN NEW;
             END IF;
         END LOOP;
