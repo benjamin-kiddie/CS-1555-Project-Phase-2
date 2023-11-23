@@ -7,5 +7,8 @@
 
 SET SCHEMA 'arbor_db';
 
+INSERT INTO CLOCK VALUES (localtimestamp);
+
 -- Testing of analytical queries.
 SELECT * FROM rankForestSensors();
+SELECT * FROM habitableEnvironment('Ilex', 'Decidua', '3');
