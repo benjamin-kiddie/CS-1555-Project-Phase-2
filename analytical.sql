@@ -39,33 +39,49 @@ CREATE OR REPLACE FUNCTION rankForestSensors() RETURNS TABLE (
 -- based on temperature data from the past k years.
 CREATE OR REPLACE FUNCTION habitableEnvironment(g varchar(30), e varchar(30),
                                                 k integer) RETURNS TABLE (
-        forest_no integer
+        forest_no integer,
+        name varchar(30),
+        area integer,
+        acid_level real,
+        MBR_XMin real,
+        MBR_XMax real,
+        MBR_YMin real,
+        MBR_YMax real
     ) AS
     $$
     DECLARE
+        synth_time timestamp;
         ideal_temp real;
+        upper_temp real;
+        lower_temp real;
         start_date timestamp;
     BEGIN
         -- Find ideal temperature for given species.
         SELECT ideal_temperature
         INTO ideal_temp
         FROM TREE_SPECIES WHERE genus = g AND EPITHET = e;
+        -- Calculate appropriate upper and lower bound temperatures.
+        upper_temp := ideal_temp + 5;
+        lower_temp := ideal_temp - 5;
+        -- Fetch current synthetic time.
+        SELECT INTO synth_time * FROM CLOCK;
         -- Find start date for average temperatures.
-        SELECT (SELECT * FROM CLOCK) - (INTERVAL '1 year' * k) INTO start_date;
-        -- Find suitable forests.
+        SELECT synth_time - (INTERVAL '1 year' * k) INTO start_date;
+        -- Find suitable forests with the ugliest query yet created by man.
         RETURN QUERY
-        SELECT p.forest_no
-        FROM (SELECT srf.forest_no, AVG(srf.temperature) AS average_temperature
+        SELECT p.forest_no, f.name, f.area, f.acid_level, f.mbr_xmin, f.mbr_xmax, f.mbr_ymin, f.mbr_ymax
+        FROM (SELECT srf.forest_no, AVG(srf.temperature) AS average_temperature -- calculate average temperature
               FROM (SELECT f.forest_no, sr.temperature
                     FROM (SELECT s.x, s.y, r.temperature
                           FROM SENSOR s
-                          NATURAL JOIN (SELECT * FROM REPORT
+                          NATURAL JOIN (SELECT * FROM REPORT -- find temperatures for sensors
                                         WHERE report_time BETWEEN start_date AND
-                                            (SELECT * FROM CLOCK)) AS r) AS sr
-                    JOIN FOREST f ON (sr.x BETWEEN f.mbr_xmin AND f.mbr_xmax)
+                                            synth_time) AS r) AS sr
+                    JOIN FOREST f ON (sr.x BETWEEN f.mbr_xmin AND f.mbr_xmax) -- find forests for sensors
                                       AND (sr.y BETWEEN f.mbr_ymin AND f.mbr_ymax)) AS srf
               GROUP BY srf.forest_no) AS p
-        WHERE average_temperature BETWEEN ideal_temp - 5 AND ideal_temp + 5;
+        NATURAL JOIN FOREST as f -- to get full forest tuple
+        WHERE average_temperature BETWEEN lower_temp AND upper_temp; -- filter by appropriate avg temp
     END;
     $$ LANGUAGE plpgsql;
 
@@ -79,7 +95,7 @@ CREATE OR REPLACE FUNCTION topSensors(num_sensors integer, months real) RETURNS 
         X real,
         Y real,
         maintainer_id varchar(9),
-        num_reports integer
+        num_reports bigint
     ) AS $$
     DECLARE
         days_int interval; -- Days before synthetic time
@@ -91,15 +107,16 @@ CREATE OR REPLACE FUNCTION topSensors(num_sensors integer, months real) RETURNS 
         -- Subtract number of months (as days) from synthetic time value (implicit cast)
         days_int = (months * 30) || ' days';
         base_time = synth_time - days_int;
-        RETURN QUERY -- Return full sensor tuple + number of reports generated in past 'months' months (see next line)
-        SELECT sensor_id, last_charged, energy, last_read, X, Y, maintainer_id, num_reports
-        FROM ((SELECT sensor_id, COUNT(sensor_id) AS num_reports -- Get table of reports per sensor_id
-               FROM REPORT
-               WHERE report_time >= base_time AND report_time <= synth_time
-               GROUP BY sensor_id) AS i
-               NATURAL JOIN SENSOR) -- Natural join to get full sensor tuples
-        WHERE num_reports IS NOT NULL
-        ORDER BY num_reports DESC
+        -- Return full sensor tuple + number of reports generated in past 'months' months (see next line)
+        RETURN QUERY
+        SELECT rn.sensor_id, rn.last_charged, rn.energy, rn.last_read, rn.X, rn.Y, rn.maintainer_id, rn.num_reports
+        FROM ((SELECT r.sensor_id, COUNT(r.sensor_id) AS num_reports -- Get table of reports per sensor_id
+               FROM REPORT r
+               WHERE r.report_time >= base_time AND r.report_time <= synth_time
+               GROUP BY r.sensor_id) AS i
+               NATURAL JOIN SENSOR) AS rn -- Natural join to get full sensor tuples
+        WHERE rn.num_reports IS NOT NULL
+        ORDER BY rn.num_reports DESC
         LIMIT num_sensors;
     END;
     $$ LANGUAGE plpgsql;

@@ -12,3 +12,4 @@ INSERT INTO CLOCK VALUES (localtimestamp);
 -- Testing of analytical queries.
 SELECT * FROM rankForestSensors();
 SELECT * FROM habitableEnvironment('Ilex', 'Decidua', '3');
+SELECT * FROM topSensors(10, 24);
