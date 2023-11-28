@@ -120,3 +120,38 @@ CREATE OR REPLACE FUNCTION topSensors(num_sensors integer, months real) RETURNS 
         LIMIT num_sensors;
     END;
     $$ LANGUAGE plpgsql;
+
+-- Find a path with at most 3 hops between two forests. where a hop is wo forests having the same tree species 
+CREATE OR REPLACE FUNCTION threeDegrees(f1 integer, f2 integer) RETURNS TABLE (
+    path text
+) AS $$
+DECLARE
+    max_hops integer := 3;
+BEGIN
+    -- Use a recursive CTE to find the path with at most 3 hops.
+    WITH RECURSIVE ForestPathCTE AS (
+        SELECT
+            f1 AS source_forest,
+            f1::TEXT AS path,
+            0 AS hops
+        UNION
+        SELECT
+            fp.source_forest,
+            fp.path || ' -> ' || f.forest_no,
+            fp.hops + 1
+        FROM
+            ForestPathCTE fp
+        JOIN
+            FOUND_IN f ON fp.source_forest = f.forest_no
+        WHERE
+            fp.hops < max_hops
+    )
+    -- Return the resulting paths.
+    SELECT
+        path
+    FROM
+        ForestPathCTE
+    WHERE
+        source_forest = f1 AND f.forest_no = f2;
+END;
+$$ LANGUAGE plpgsql;
