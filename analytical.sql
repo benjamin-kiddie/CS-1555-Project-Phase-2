@@ -143,6 +143,8 @@ BEGIN
             ForestPathCTE fp
         JOIN
             FOUND_IN f ON fp.source_forest = f.forest_no
+        JOIN
+            FOUND_IN f2 ON f.forest_no = f2.forest_no
         WHERE
             fp.hops < max_hops
     )
@@ -152,6 +154,7 @@ BEGIN
     FROM
         ForestPathCTE
     WHERE
-        source_forest = f1 AND f.forest_no = f2;
+        source_forest = f1 AND f2.forest_no IS NOT NULL
+    --LIMIT 1;
 END;
 $$ LANGUAGE plpgsql;
