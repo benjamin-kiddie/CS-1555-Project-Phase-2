@@ -121,6 +121,9 @@ CREATE OR REPLACE FUNCTION topSensors(num_sensors integer, months real) RETURNS 
     END;
     $$ LANGUAGE plpgsql;
 
+
+-- View that pairs all forests that share a tree species.
+-- Used by threeDegrees().
 DROP VIEW IF EXISTS sharesSpecies;
 CREATE VIEW sharesSpecies AS
     SELECT f1.forest_no AS for_1, f2.forest_no AS for_2
@@ -129,7 +132,6 @@ CREATE VIEW sharesSpecies AS
                         AND f1.forest_no != f2.forest_no;
 
 -- Find a path with at most 3 hops between two forests. where a hop is wo forests having the same tree species
-drop function threedegrees(f1 integer, f2 integer);
 CREATE OR REPLACE FUNCTION threeDegrees(f1 integer, f2 integer) RETURNS TABLE (
     path text
   ) AS
