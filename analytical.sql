@@ -121,40 +121,36 @@ CREATE OR REPLACE FUNCTION topSensors(num_sensors integer, months real) RETURNS 
     END;
     $$ LANGUAGE plpgsql;
 
--- Find a path with at most 3 hops between two forests. where a hop is wo forests having the same tree species 
+DROP VIEW IF EXISTS sharesSpecies;
+CREATE VIEW sharesSpecies AS
+    SELECT f1.forest_no AS for_1, f2.forest_no AS for_2
+    FROM FOUND_IN f1
+    JOIN FOUND_IN f2 ON f1.genus = f2.genus AND f1.epithet = f2.epithet
+                        AND f1.forest_no != f2.forest_no;
+
+-- Find a path with at most 3 hops between two forests. where a hop is wo forests having the same tree species
+drop function threedegrees(f1 integer, f2 integer);
 CREATE OR REPLACE FUNCTION threeDegrees(f1 integer, f2 integer) RETURNS TABLE (
     path text
-) AS $$
-DECLARE
-    max_hops integer := 3;
-BEGIN
-    -- Use a recursive CTE to find the path with at most 3 hops.
-    WITH RECURSIVE ForestPathCTE AS (
-        SELECT
-            f1 AS source_forest,
-            f1::TEXT AS path,
-            0 AS hops
-        UNION
-        SELECT
-            fp.source_forest,
-            fp.path || ' -> ' || f.forest_no,
-            fp.hops + 1
-        FROM
-            ForestPathCTE fp
-        JOIN
-            FOUND_IN f ON fp.source_forest = f.forest_no
-        JOIN
-            FOUND_IN f2 ON f.forest_no = f2.forest_no
-        WHERE
-            fp.hops < max_hops
-    )
-    -- Return the resulting paths.
-    SELECT
-        path
-    FROM
-        ForestPathCTE
-    WHERE
-        source_forest = f1 AND f2.forest_no IS NOT NULL
-    --LIMIT 1;
-END;
-$$ LANGUAGE plpgsql;
+  ) AS
+    $$
+    DECLARE
+        p varchar(35);
+    BEGIN
+        RETURN QUERY
+        WITH RECURSIVE ForestPath AS (
+            SELECT s.for_1, s.for_2, 1 as num_hops, s.for_1 || ' -> ' || s.for_2 AS path
+            FROM sharesSpecies s
+            WHERE s.for_1 = f1
+            UNION
+                SELECT p.for_1, s.for_2, p.num_hops + 1, p.path || ' -> ' || s.for_2
+                FROM ForestPath p, SharesSpecies s
+                WHERE p.for_2 = s.for_1 AND p.num_hops < 3
+        )
+        SELECT p.path
+        FROM ForestPath p
+        WHERE for_2 = f2
+        ORDER BY CHAR_LENGTH(p.path)
+        LIMIT 1;
+    END;
+    $$ LANGUAGE plpgsql;

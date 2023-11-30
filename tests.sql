@@ -13,3 +13,4 @@ INSERT INTO CLOCK VALUES (localtimestamp);
 SELECT * FROM rankForestSensors();
 SELECT * FROM habitableEnvironment('Ilex', 'Decidua', '3');
 SELECT * FROM topSensors(10, 24);
+SELECT * FROM threeDegrees(4, 17);
